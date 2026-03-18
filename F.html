@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="th" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KRT PIT - Management System</title>
+    <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.18.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.18.0/firebase-database-compat.js"></script>
+
+    <style>
+        * { font-family: 'Noto Sans Thai', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #0f172a; background-image: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); color: #f8fafc; min-height: 100vh; }
+        .gold-gradient { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        .glass-card { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(245, 158, 11, 0.2); backdrop-filter: blur(10px); }
+        .nav-active { background: #f59e0b !important; color: #0f172a !important; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3); }
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .btn-confirm { background: #f59e0b; color: #000; font-weight: 800; box-shadow: 0 4px 0 #b45309; transition: all 0.1s; }
+        .btn-confirm:active { transform: translateY(2px); box-shadow: 0 2px 0 #b45309; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-thumb { background: #f59e0b; border-radius: 10px; }
+    </style>
+</head>
+<body class="flex flex-col md:flex-row h-screen overflow-hidden">
+
+    <aside class="hidden md:flex w-64 bg-slate-900 border-r border-amber-500/20 flex-col p-6">
+        <div class="mb-10 text-center">
+            <div class="w-16 h-16 gold-gradient rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-xl">
+                <i data-lucide="school" class="text-slate-900 w-8 h-8"></i>
+            </div>
+            <h1 class="text-lg font-black text-amber-500 tracking-tight">KORAT PIT</h1>
+        </div>
+        <nav class="flex-1 space-y-2">
+            <button onclick="showPage('checkin')" id="btn-nav-checkin-pc" class="nav-active w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all">
+                <i data-lucide="user-check"></i> ลงเวลาปฏิบัติงาน
+            </button>
+            <button onclick="checkAdmin('history')" id="btn-nav-history-pc" class="admin-only hidden w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-slate-400 hover:bg-white/5 transition-all">
+                <i data-lucide="calendar-days"></i> รายงานย้อนหลัง
+            </button>
+            <button onclick="checkAdmin('admin')" id="btn-nav-admin-pc" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-slate-400 hover:bg-white/5 transition-all">
+                <i data-lucide="settings"></i> จัดการบุคลากร
+            </button>
+        </nav>
+        <button id="logout-btn-pc" onclick="adminLogout()" class="hidden w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-rose-400 bg-rose-400/10 mt-4">
+            <i data-lucide="log-out"></i> ออกจากระบบ
+        </button>
+    </aside>
+
+    <main class="flex-1 flex flex-col p-4 md:p-8 overflow-y-auto pb-32 md:pb-8">
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4 border-b border-amber-500/20 pb-6">
+            <div>
+                <h2 id="page-title" class="text-2xl md:text-3xl font-black text-white">ลงเวลาปฏิบัติราชการ</h2>
+                <p id="live-date" class="text-amber-500 text-sm md:text-base font-medium"></p>
+            </div>
+            <div class="text-left md:text-right">
+                <p class="text-[10px] text-slate-400 uppercase font-bold mb-1">เวลาปัจจุบัน</p>
+                <p id="live-time" class="text-3xl md:text-4xl font-black text-white leading-none">00:00:00</p>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div class="glass-card p-3 md:p-4 rounded-xl border-l-4 border-l-blue-500">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">บุคลากรทั้งหมด</p>
+                <p id="stat-total" class="text-2xl font-black text-white">0</p>
+            </div>
+            <div class="glass-card p-3 md:p-4 rounded-xl border-l-4 border-l-emerald-500">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">มาแล้ว</p>
+                <p id="stat-present" class="text-2xl font-black text-emerald-500">0</p>
+            </div>
+            <div class="glass-card p-3 md:p-4 rounded-xl border-l-4 border-l-amber-500">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">สาย</p>
+                <p id="stat-late" class="text-2xl font-black text-amber-500">0</p>
+            </div>
+            <div class="glass-card p-3 md:p-4 rounded-xl border-l-4 border-l-rose-500">
+                <p class="text-[10px] font-bold text-slate-400 uppercase">ยังไม่มา</p>
+                <p id="stat-absent" class="text-2xl font-black text-rose-500">0</p>
+            </div>
+        </div>
+
+        <div id="page-checkin" class="page active space-y-6">
+            <div class="flex flex-col lg:flex-row gap-6">
+                <div class="flex-1 glass-card p-6 md:p-8 rounded-[24px] shadow-2xl">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-amber-500 uppercase">เลือกรายชื่อ</label>
+                            <select id="staff-select" class="w-full h-14 bg-slate-800 border-2 border-amber-500/30 rounded-xl px-4 text-white font-bold outline-none"></select>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-amber-500 uppercase">ประเภทการลงเวลา</label>
+                            <select id="checkin-type" class="w-full h-14 bg-slate-800 border-2 border-amber-500/30 rounded-xl px-4 text-white font-bold outline-none">
+                                <option value="in">🕒 เวลามา (เช้า)</option>
+                                <option value="out">🏠 เวลากลับ (เย็น)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="handleCheckIn()" class="btn-confirm w-full h-16 rounded-xl text-lg flex items-center justify-center gap-3">
+                        <i data-lucide="save"></i> บันทึกเวลาปฏิบัติราชการ
+                    </button>
+                </div>
+                <div class="lg:w-72 glass-card p-6 rounded-[24px] flex flex-col items-center justify-center text-center">
+                    <h3 class="text-xs font-bold text-amber-500 mb-4 uppercase">สัดส่วนวันนี้</h3>
+                    <div style="width: 150px; height: 150px;"><canvas id="attendanceChart"></canvas></div>
+                </div>
+            </div>
+            <div class="glass-card rounded-[24px] overflow-hidden">
+                <div class="p-4 bg-white/5 font-bold text-amber-500 text-sm">ประวัติการลงเวลาวันนี้</div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left min-w-[500px]">
+                        <thead class="bg-slate-900/50 text-[10px] font-bold text-slate-400 uppercase">
+                            <tr><th class="p-4">รหัส/ชื่อ</th><th class="p-4">เวลามา</th><th class="p-4">เวลากลับ</th><th class="p-4 text-center">สถานะ</th></tr>
+                        </thead>
+                        <tbody id="attendance-list" class="divide-y divide-white/5 text-sm"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-history" class="page space-y-6">
+            <div class="glass-card p-6 rounded-[24px] space-y-6">
+                <div class="flex gap-2 p-1 bg-slate-900 rounded-xl w-fit">
+                    <button onclick="switchHistoryMode('date')" id="tab-date" class="px-4 py-2 rounded-lg font-bold text-xs transition-all bg-amber-500 text-slate-900">ดูตามวันที่</button>
+                    <button onclick="switchHistoryMode('staff')" id="tab-staff" class="px-4 py-2 rounded-lg font-bold text-xs transition-all text-slate-400">ดูตามรายชื่อ</button>
+                </div>
+                <div class="flex flex-wrap items-end gap-4">
+                    <div id="group-date" class="flex-1 min-w-[200px]">
+                        <label class="text-[10px] font-bold text-amber-500 mb-2 block uppercase">เลือกวันที่ดูรายงาน</label>
+                        <input type="date" id="history-date-input" onchange="renderHistory()" class="w-full h-12 bg-slate-800 border border-white/10 rounded-xl px-4 text-white outline-none focus:border-amber-500">
+                    </div>
+                    <div id="group-staff" class="flex-1 min-w-[200px] hidden">
+                        <label class="text-[10px] font-bold text-amber-500 mb-2 block uppercase">เลือกบุคลากร</label>
+                        <select id="history-staff-select" onchange="renderHistory()" class="w-full h-12 bg-slate-800 border border-white/10 rounded-xl px-4 text-white outline-none"></select>
+                    </div>
+                    <button onclick="exportToExcel()" class="h-12 px-6 bg-emerald-600 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-emerald-500 transition-all">
+                        <i data-lucide="download"></i> Export Excel
+                    </button>
+                </div>
+
+                <div id="stats-summary" class="hidden grid grid-cols-3 gap-3">
+                    <div class="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-center">
+                        <p class="text-[10px] text-blue-400 font-bold uppercase">มาปฏิบัติงาน</p>
+                        <p id="sum-total" class="text-xl font-black text-white">0</p>
+                    </div>
+                    <div class="p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-center">
+                        <p class="text-[10px] text-rose-400 font-bold uppercase">มาสาย</p>
+                        <p id="sum-late" class="text-xl font-black text-rose-500">0</p>
+                    </div>
+                    <div class="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-center">
+                        <p class="text-[10px] text-emerald-400 font-bold uppercase">รักษาเวลา</p>
+                        <p id="sum-ontime" class="text-xl font-black text-emerald-400">0%</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card rounded-[24px] overflow-hidden">
+                <div class="p-4 bg-white/5">
+                   <input type="text" id="history-search" onkeyup="searchTable()" placeholder="🔍 พิมพ์ชื่อหรือรหัสเพื่อค้นหาในตาราง..." class="w-full bg-slate-900 border border-white/10 rounded-lg px-4 py-2 text-xs text-white outline-none focus:border-amber-500">
+                </div>
+                <div class="overflow-x-auto max-h-[600px]">
+                    <table class="w-full text-left min-w-[600px]" id="history-table">
+                        <thead class="bg-slate-900/50 text-[10px] font-bold text-slate-400 uppercase sticky top-0">
+                            <tr><th class="p-4">วันที่</th><th class="p-4">รหัส-ชื่อ</th><th class="p-4">เวลามา</th><th class="p-4">เวลากลับ</th><th class="p-4 text-center">สถานะ</th></tr>
+                        </thead>
+                        <tbody id="history-table-body" class="divide-y divide-white/5 text-sm font-medium"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-admin" class="page space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="glass-card p-6 rounded-[24px] space-y-4">
+                    <h3 class="text-emerald-400 font-bold flex items-center gap-2"><i data-lucide="user-plus"></i> เพิ่มบุคลากร</h3>
+                    <input type="text" id="new-id" class="w-full h-12 bg-slate-900 border border-white/10 rounded-xl px-4 text-white" placeholder="เช่น K20">
+                    <input type="text" id="new-name" class="w-full h-12 bg-slate-900 border border-white/10 rounded-xl px-4 text-white" placeholder="ชื่อ-นามสกุล">
+                    <button onclick="addStaff()" class="w-full py-3 bg-emerald-600 rounded-xl font-bold text-white hover:bg-emerald-500 transition-all shadow-lg">เพิ่มเข้าสู่ระบบ</button>
+                </div>
+                <div class="glass-card rounded-[24px] overflow-hidden flex flex-col">
+                    <div class="p-4 border-b border-white/5 font-bold text-sm text-amber-500">รายชื่อในระบบปัจจุบัน</div>
+                    <div class="max-h-[300px] overflow-auto">
+                        <table class="w-full text-left text-sm"><tbody id="manage-staff-list" class="divide-y divide-white/5"></tbody></table>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button onclick="clearHistory()" class="py-4 bg-rose-900/20 border border-rose-500/30 text-rose-500 rounded-xl font-bold text-xs uppercase hover:bg-rose-500 hover:text-white transition-all">ล้างประวัติการลงเวลาทั้งหมด</button>
+                <div class="p-4 glass-card rounded-xl text-xs text-slate-400 italic text-center">หมายเหตุ: การลบรายชื่อจะมีผลกับระบบลงเวลาทันที</div>
+            </div>
+        </div>
+    </main>
+
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/90 border-t border-amber-500/30 flex justify-around p-3 z-50 backdrop-blur-xl">
+        <button onclick="showPage('checkin')" class="flex flex-col items-center gap-1 text-amber-500">
+            <i data-lucide="user-check" class="w-6 h-6"></i><span class="text-[10px] font-bold">ลงเวลา</span>
+        </button>
+        <button onclick="checkAdmin('history')" class="admin-only hidden flex flex-col items-center gap-1 text-slate-400">
+            <i data-lucide="calendar-days" class="w-6 h-6"></i><span class="text-[10px] font-bold">รายงาน</span>
+        </button>
+        <button onclick="checkAdmin('admin')" class="flex flex-col items-center gap-1 text-slate-400">
+            <i data-lucide="settings" class="w-6 h-6"></i><span class="text-[10px] font-bold">จัดการ</span>
+        </button>
+    </nav>
+
+    <div id="login-modal" class="fixed inset-0 bg-black/95 backdrop-blur-xl hidden z-[100] items-center justify-center p-6">
+        <div class="glass-card p-8 w-full max-w-xs rounded-[32px] text-center border-amber-500">
+            <h3 class="text-xl font-black text-white mb-6 tracking-widest uppercase">Admin Login</h3>
+            <input type="password" id="admin-pass" class="w-full h-14 rounded-xl text-center text-2xl mb-6 bg-slate-900 border-2 border-amber-500 text-white outline-none shadow-[0_0_15px_rgba(245,158,11,0.2)]" placeholder="••••">
+            <div class="flex gap-2">
+                <button onclick="closeModal()" class="flex-1 h-12 rounded-xl bg-white/10 text-white font-bold text-xs">ยกเลิก</button>
+                <button onclick="tryLogin()" class="flex-1 h-12 rounded-xl gold-gradient text-slate-900 font-bold text-xs uppercase">ยืนยัน</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Firebase Configuration ---
+        const firebaseConfig = { databaseURL: "https://krpkorat-default-rtdb.asia-southeast1.firebasedatabase.app/" };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let staffList = [];
+        let attendance = [];
+        let isAdmin = false;
+        let historyMode = 'date';
+        let myChart = null;
+        let pendingPage = 'admin';
+
+        // --- 2. Initial Setup ---
+        function init() {
+            lucide.createIcons();
+            setInterval(updateClock, 1000);
+            
+            // ตั้งค่าวันที่หน้าประวัติเป็นวันนี้
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('history-date-input').value = today;
+
+            // ตรวจสอบและแทรกรายชื่อเริ่มต้นหาก Firebase ว่าง
+            db.ref('staffList').once('value').then(snap => {
+                if (!snap.exists()) {
+                    const defaultStaff = [
+                        {id:'K01',name:'นางมัสธุรส ผ่องสุข'},{id:'K02',name:'นางปวีณา จันทร์คำวงษ์'},{id:'K03',name:'นางสาวศศิวิมล เกิดหมื่นไวย'},
+                        {id:'K06',name:'นางสาววรารัตน์ เลิศแก้ว'},{id:'K07',name:'นางสุภาพร พรพิมานแมน'},{id:'K08',name:'นางสาวจันจิรา รักษาราช'},
+                        {id:'K11',name:'นายกิติพงศ์ เพ็งวิสาภาพพงษ์'},{id:'K12',name:'นางจันฑิมา ทองภูบาล'},{id:'K13',name:'นางศิริวรรณ ไม้พรต'},
+                        {id:'K14',name:'นางสาวสุกัญญา ชอบรัก'},{id:'K16',name:'นายขจรศักดิ์ วิวัฒน์วรรธนะ'},{id:'K17',name:'นางสาวรัชดาลัย ศิรินนท์'},{id:'K18',name:'นางสาวเกวลี จุลนาค'}
+                    ];
+                    defaultStaff.forEach(s => db.ref('staffList/' + s.id).set(s));
+                }
+            });
+
+            syncData();
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-time').textContent = now.toLocaleTimeString('th-TH', {hour12:false});
+            document.getElementById('live-date').textContent = now.toLocaleDateString('th-TH', {weekday:'short', day:'numeric', month:'short', year:'numeric'});
+        }
+
+        function syncData() {
+            db.ref('staffList').on('value', snap => {
+                staffList = snap.val() ? Object.values(snap.val()) : [];
+                updateStaffDropdown();
+                renderManageStaff();
+                updateDashboard();
+            });
+            db.ref('attendance').on('value', snap => {
+                attendance = snap.val() ? Object.values(snap.val()) : [];
+                renderTodayList();
+                updateDashboard();
+                if(document.getElementById('page-history').classList.contains('active')) renderHistory();
+            });
+        }
+
+        // --- 3. Core Logic ---
+        function handleCheckIn() {
+            const id = document.getElementById('staff-select').value;
+            const type = document.getElementById('checkin-type').value;
+            if(!id) return alert('กรุณาเลือกรายชื่อก่อนบันทึก');
+            
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('th-TH');
+            const dateKey = dateStr.replace(/\//g, '-');
+            const recordKey = `${dateKey}_${id}`;
+            const time = now.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit', hour12:false});
+            const staff = staffList.find(s => s.id === id);
+
+            db.ref('attendance/' + recordKey).once('value').then(snap => {
+                let record = snap.val() || { id, name: staff.name, date: dateStr, in: '', out: '', status: 'ปกติ' };
+                if(type === 'in') {
+                    record.in = time;
+                    record.status = time > '08:30' ? 'สาย' : 'ปกติ';
+                } else {
+                    record.out = time;
+                }
+                db.ref('attendance/' + recordKey).set(record);
+                alert('บันทึกข้อมูลเรียบร้อยแล้ว!');
+            });
+        }
+
+        function renderTodayList() {
+            const today = new Date().toLocaleDateString('th-TH');
+            const daily = attendance.filter(r => r.date === today).reverse();
+            document.getElementById('attendance-list').innerHTML = daily.map(r => `
+                <tr class="hover:bg-white/5 border-b border-white/5">
+                    <td class="p-4"><div class="text-amber-500 font-bold">${r.id}</div><div class="text-white text-xs">${r.name}</div></td>
+                    <td class="p-4 font-bold text-emerald-400">${r.in || '-'}</td>
+                    <td class="p-4 font-bold text-slate-400">${r.out || '-'}</td>
+                    <td class="p-4 text-center"><span class="px-2 py-1 rounded text-[10px] font-black text-white ${r.status==='สาย'?'bg-rose-500':'bg-emerald-500'}">${r.status}</span></td>
+                </tr>`).join('');
+        }
+
+        function updateDashboard() {
+            const today = new Date().toLocaleDateString('th-TH');
+            const daily = attendance.filter(r => r.date === today);
+            const present = daily.filter(r => r.in !== '').length;
+            const late = daily.filter(r => r.status === 'สาย').length;
+            
+            document.getElementById('stat-total').textContent = staffList.length;
+            document.getElementById('stat-present').textContent = present;
+            document.getElementById('stat-late').textContent = late;
+            document.getElementById('stat-absent').textContent = staffList.length - present;
+            
+            const ctx = document.getElementById('attendanceChart').getContext('2d');
+            if (myChart) myChart.destroy();
+            myChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: { datasets: [{ data: [present-late || 0.1, late, staffList.length-present], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 0 }] },
+                options: { cutout: '75%', plugins: { legend: { display: false } } }
+            });
+        }
+
+        // --- 4. History Management ---
+        function switchHistoryMode(mode) {
+            historyMode = mode;
+            document.getElementById('tab-date').className = mode === 'date' ? 'px-4 py-2 rounded-lg font-bold text-xs bg-amber-500 text-slate-900' : 'px-4 py-2 rounded-lg font-bold text-xs text-slate-400';
+            document.getElementById('tab-staff').className = mode === 'staff' ? 'px-4 py-2 rounded-lg font-bold text-xs bg-amber-500 text-slate-900' : 'px-4 py-2 rounded-lg font-bold text-xs text-slate-400';
+            document.getElementById('group-date').classList.toggle('hidden', mode !== 'date');
+            document.getElementById('group-staff').classList.toggle('hidden', mode !== 'staff');
+            
+            if(mode === 'staff') {
+                const select = document.getElementById('history-staff-select');
+                select.innerHTML = '<option value="">กรุณาเลือกรายชื่อ...</option>' + staffList.map(s => `<option value="${s.id}">${s.id} - ${s.name}</option>`).join('');
+            }
+            renderHistory();
+        }
+
+        function renderHistory() {
+            let filtered = [];
+            const statsDiv = document.getElementById('stats-summary');
+            if(historyMode === 'date') {
+                statsDiv.classList.add('hidden');
+                const dInput = document.getElementById('history-date-input').value;
+                if(!dInput) return;
+                const [y, m, d] = dInput.split('-');
+                const target = `${parseInt(d)}/${parseInt(m)}/${parseInt(y)+543}`;
+                filtered = attendance.filter(r => r.date === target);
+            } else {
+                const sid = document.getElementById('history-staff-select').value;
+                if(!sid) return statsDiv.classList.add('hidden');
+                filtered = attendance.filter(r => r.id === sid).reverse();
+                const total = filtered.length, late = filtered.filter(r => r.status === 'สาย').length;
+                document.getElementById('sum-total').textContent = total;
+                document.getElementById('sum-late').textContent = late;
+                document.getElementById('sum-ontime').textContent = total > 0 ? Math.round(((total-late)/total)*100)+'%' : '0%';
+                statsDiv.classList.remove('hidden');
+            }
+            document.getElementById('history-table-body').innerHTML = filtered.map(r => `
+                <tr class="hover:bg-white/5 border-b border-white/5">
+                    <td class="p-4 text-slate-500 text-xs">${r.date}</td>
+                    <td class="p-4 font-bold text-white"><span class="text-amber-500 mr-2">${r.id}</span>${r.name}</td>
+                    <td class="p-4 text-emerald-400 font-bold">${r.in || '-'}</td>
+                    <td class="p-4 text-slate-400">${r.out || '-'}</td>
+                    <td class="p-4 text-center"><span class="px-2 py-1 rounded text-[10px] font-black ${r.status==='สาย'?'bg-rose-500/20 text-rose-500':'bg-emerald-500/20 text-emerald-500'}">${r.status}</span></td>
+                </tr>`).join('');
+        }
+
+        function searchTable() {
+            const val = document.getElementById('history-search').value.toLowerCase();
+            const rows = document.querySelectorAll('#history-table-body tr');
+            rows.forEach(row => row.style.display = row.innerText.toLowerCase().includes(val) ? '' : 'none');
+        }
+
+        // --- 5. Navigation & Admin Functions ---
+        function showPage(id) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + id).classList.add('active');
+            
+            // UI Toggle for PC Sidebar
+            const btnPc = ['checkin', 'history', 'admin'];
+            btnPc.forEach(p => {
+                const btn = document.getElementById(`btn-nav-${p}-pc`);
+                if(btn) btn.className = (p === id) ? 'nav-active w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all' : 'w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-slate-400 hover:bg-white/5 transition-all';
+            });
+
+            const titles = { checkin: 'ลงเวลาปฏิบัติราชการ', admin: 'จัดการบุคลากร', history: 'รายงานย้อนหลัง' };
+            document.getElementById('page-title').textContent = titles[id];
+            if(id === 'history') renderHistory();
+        }
+
+        function checkAdmin(target) { 
+            if(isAdmin) showPage(target); 
+            else { pendingPage = target; document.getElementById('login-modal').style.display = 'flex'; }
+        }
+
+        function tryLogin() {
+            if(document.getElementById('admin-pass').value === 'admin1234') {
+                isAdmin = true; closeModal();
+                document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+                document.getElementById('logout-btn-pc').classList.remove('hidden');
+                showPage(pendingPage);
+            } else alert('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่');
+        }
+
+        function adminLogout() { isAdmin = false; window.location.reload(); }
+        function closeModal() { document.getElementById('login-modal').style.display = 'none'; document.getElementById('admin-pass').value = ''; }
+
+        function updateStaffDropdown() {
+            document.getElementById('staff-select').innerHTML = '<option value="">แตะเพื่อเลือกรายชื่อบุคลากร...</option>' + 
+                staffList.map(s => `<option value="${s.id}">${s.id} - ${s.name}</option>`).join('');
+        }
+
+        function renderManageStaff() {
+            document.getElementById('manage-staff-list').innerHTML = staffList.map(s => `
+                <tr class="hover:bg-white/5"><td class="p-4 text-amber-500 font-bold">${s.id}</td><td class="p-4 text-white font-bold">${s.name}</td>
+                <td class="p-4 text-right"><button onclick="deleteStaff('${s.id}')" class="text-rose-500 p-2 hover:bg-rose-500/10 rounded-lg transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td></tr>`).join('');
+            lucide.createIcons();
+        }
+
+        function addStaff() {
+            const id = document.getElementById('new-id').value.trim(), name = document.getElementById('new-name').value.trim();
+            if(id && name) { 
+                db.ref('staffList/'+id).set({id, name}); 
+                document.getElementById('new-id').value=''; document.getElementById('new-name').value='';
+                alert('เพิ่มข้อมูลสำเร็จ');
+            } else alert('กรุณากรอกรหัสและชื่อให้ครบถ้วน');
+        }
+
+        function deleteStaff(id) { if(confirm('คุณต้องการลบรายชื่อนี้ออกจากระบบใช่หรือไม่?')) db.ref('staffList/'+id).remove(); }
+        function clearHistory() { if(confirm('คำเตือน: ข้อมูลการลงเวลาทั้งหมดจะถูกลบถาวร ยืนยันใช่หรือไม่?')) db.ref('attendance').remove(); }
+        
+        function exportToExcel() {
+            const rows = Array.from(document.querySelectorAll('#history-table tr')).map(tr => Array.from(tr.cells).map(td => td.innerText));
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Attendance_Report");
+            XLSX.writeFile(wb, `KRT_Report_${new Date().toLocaleDateString()}.xlsx`);
+        }
+
+        init();
+    </script>
+</body>
+</html>
